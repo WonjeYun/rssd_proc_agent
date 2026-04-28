@@ -1,0 +1,245 @@
+"""
+Custom MCP tools for the FFIEC RSSD Lookup Agent.
+
+Each tool wraps a db.py function and returns structured text results
+for Claude to interpret and present to the user.
+"""
+
+import json
+import traceback
+from pathlib import Path
+from typing import Any
+
+import pandas as pd
+
+from claude_agent_sdk import create_sdk_mcp_server, tool
+
+from . import db
+
+SERVER_NAME = "ffiec"
+SERVER_VERSION = "1.0.0"
+
+
+def _fmt_rows(rows: list[dict], max_rows: int = 30) -> str:
+    if not rows:
+        return "No results found."
+    truncated = rows[:max_rows]
+    text = json.dumps(truncated, indent=2, default=str)
+    if len(rows) > max_rows:
+        text += f"\n\n... and {len(rows) - max_rows} more rows (total {len(rows)})"
+    return text
+
+
+# ── Tools ───────────────────────────────────────────────────────────
+
+@tool(
+    "search_institution",
+    "Search FFIEC NIC institutions by name, RSSD ID, state, city, FDIC cert, NCUA charter, ABA routing number, or LEI. "
+    "All text searches are case-insensitive partial matches. "
+    "Provide at least one search parameter. Set active_only to 'true' to exclude closed institutions.",
+    {
+        "name": str,
+        "rssd_id": str,
+        "state": str,
+        "city": str,
+        "fdic_cert": str,
+        "ncua_id": str,
+        "aba_routing": str,
+        "lei": str,
+        "active_only": str,
+    },
+)
+async def search_institution(args: dict[str, Any]) -> dict[str, Any]:
+    try:
+        kwargs: dict[str, Any] = {}
+        if args.get("name"):
+            kwargs["name"] = args["name"]
+        if args.get("rssd_id"):
+            kwargs["rssd_id"] = int(args["rssd_id"])
+        if args.get("state"):
+            kwargs["state"] = args["state"]
+        if args.get("city"):
+            kwargs["city"] = args["city"]
+        if args.get("fdic_cert"):
+            kwargs["fdic_cert"] = int(args["fdic_cert"])
+        if args.get("ncua_id"):
+            kwargs["ncua_id"] = int(args["ncua_id"])
+        if args.get("aba_routing"):
+            kwargs["aba_routing"] = int(args["aba_routing"])
+        if args.get("lei"):
+            kwargs["lei"] = args["lei"]
+        if args.get("active_only", "").lower() == "true":
+            kwargs["active_only"] = True
+
+        rows = db.search_institution(**kwargs)
+        return {"content": [{"type": "text", "text": _fmt_rows(rows)}]}
+    except Exception as e:
+        return {"content": [{"type": "text", "text": f"Error: {e}"}], "is_error": True}
+
+
+@tool(
+    "get_institution_details",
+    "Get the full attribute record for a given RSSD ID, including all date ranges. "
+    "Returns charter type, regulator, address, identifiers, and status history.",
+    {"rssd_id": str},
+)
+async def get_institution_details(args: dict[str, Any]) -> dict[str, Any]:
+    try:
+        rssd_id = int(args["rssd_id"])
+        rows = db.get_institution(rssd_id)
+        return {"content": [{"type": "text", "text": _fmt_rows(rows)}]}
+    except Exception as e:
+        return {"content": [{"type": "text", "text": f"Error: {e}"}], "is_error": True}
+
+
+@tool(
+    "get_ownership_tree",
+    "Get parent/subsidiary ownership and control relationships for a given RSSD ID. "
+    "Set direction to 'parent' (entities this RSSD owns), 'offspring' (entities that own this RSSD), or 'both'. "
+    "Set active_only to 'true' to see only current relationships.",
+    {"rssd_id": str, "direction": str, "active_only": str},
+)
+async def get_ownership_tree(args: dict[str, Any]) -> dict[str, Any]:
+    try:
+        rssd_id = int(args["rssd_id"])
+        direction = args.get("direction", "both").lower()
+        active_only = args.get("active_only", "").lower() == "true"
+        rows = db.get_relationships(
+            rssd_id,
+            as_parent=(direction in ("parent", "both")),
+            as_offspring=(direction in ("offspring", "both")),
+            active_only=active_only,
+        )
+        return {"content": [{"type": "text", "text": _fmt_rows(rows)}]}
+    except Exception as e:
+        return {"content": [{"type": "text", "text": f"Error: {e}"}], "is_error": True}
+
+
+@tool(
+    "get_merger_history",
+    "Get the transformation (merger, acquisition, failure, split) history for a given RSSD ID. "
+    "Set direction to 'predecessor' (what this entity was absorbed into), "
+    "'successor' (what entities were absorbed by this one), or 'both'.",
+    {"rssd_id": str, "direction": str},
+)
+async def get_merger_history(args: dict[str, Any]) -> dict[str, Any]:
+    try:
+        rssd_id = int(args["rssd_id"])
+        direction = args.get("direction", "both").lower()
+        rows = db.get_transformations(
+            rssd_id,
+            as_predecessor=(direction in ("predecessor", "both")),
+            as_successor=(direction in ("successor", "both")),
+        )
+        return {"content": [{"type": "text", "text": _fmt_rows(rows)}]}
+    except Exception as e:
+        return {"content": [{"type": "text", "text": f"Error: {e}"}], "is_error": True}
+
+
+@tool(
+    "get_branches",
+    "List branch office locations for a given head-office RSSD ID. "
+    "Set active_only to 'true' (default) to see only currently open branches.",
+    {"rssd_id": str, "active_only": str},
+)
+async def get_branches(args: dict[str, Any]) -> dict[str, Any]:
+    try:
+        rssd_id = int(args["rssd_id"])
+        active_only = args.get("active_only", "true").lower() != "false"
+        rows = db.get_branches(rssd_id, active_only=active_only)
+        return {"content": [{"type": "text", "text": _fmt_rows(rows, max_rows=100)}]}
+    except Exception as e:
+        return {"content": [{"type": "text", "text": f"Error: {e}"}], "is_error": True}
+
+
+@tool(
+    "match_bank_list",
+    "Fuzzy-match a list of bank names from a CSV or Excel file against the FFIEC NIC database. "
+    "Provide the file_path to a .csv or .xlsx file. Specify the column name containing bank names "
+    "with 'name_column' (defaults to the first column). Returns each input name with its best "
+    "RSSD ID matches and confidence scores.",
+    {"file_path": str, "name_column": str, "active_only": str},
+)
+async def match_bank_list(args: dict[str, Any]) -> dict[str, Any]:
+    try:
+        file_path = Path(args["file_path"]).expanduser().resolve()
+        if not file_path.exists():
+            return {
+                "content": [{"type": "text", "text": f"File not found: {file_path}"}],
+                "is_error": True,
+            }
+
+        suffix = file_path.suffix.lower()
+        if suffix in (".xlsx", ".xls"):
+            df = pd.read_excel(file_path, dtype=str)
+        elif suffix == ".csv":
+            df = pd.read_csv(file_path, dtype=str)
+        else:
+            return {
+                "content": [{"type": "text", "text": f"Unsupported file type: {suffix}. Use .csv or .xlsx"}],
+                "is_error": True,
+            }
+
+        name_col = args.get("name_column") or df.columns[0]
+        if name_col not in df.columns:
+            return {
+                "content": [{"type": "text", "text": f"Column '{name_col}' not found. Available: {list(df.columns)}"}],
+                "is_error": True,
+            }
+
+        names = df[name_col].dropna().astype(str).tolist()
+        if not names:
+            return {
+                "content": [{"type": "text", "text": "No names found in the specified column."}],
+                "is_error": True,
+            }
+
+        active_only = args.get("active_only", "true").lower() != "false"
+        results = db.fuzzy_match_names(names, active_only=active_only)
+        return {"content": [{"type": "text", "text": _fmt_rows(results, max_rows=200)}]}
+
+    except Exception as e:
+        return {
+            "content": [{"type": "text", "text": f"Error: {e}\n{traceback.format_exc()}"}],
+            "is_error": True,
+        }
+
+
+@tool(
+    "run_sql_query",
+    "Execute a read-only SQL SELECT query directly against the FFIEC NIC SQLite database. "
+    "Available tables: institutions_active, institutions_closed, branches, relationships, "
+    "transformations, institutions_all (view = active UNION closed). "
+    "Only SELECT/WITH statements are allowed.",
+    {"query": str},
+)
+async def run_sql_query(args: dict[str, Any]) -> dict[str, Any]:
+    try:
+        rows = db.run_sql(args["query"])
+        return {"content": [{"type": "text", "text": _fmt_rows(rows)}]}
+    except Exception as e:
+        return {"content": [{"type": "text", "text": f"Error: {e}"}], "is_error": True}
+
+
+# ── Server Factory ──────────────────────────────────────────────────
+
+ALL_TOOLS = [
+    search_institution,
+    get_institution_details,
+    get_ownership_tree,
+    get_merger_history,
+    get_branches,
+    match_bank_list,
+    run_sql_query,
+]
+
+ALLOWED_TOOL_NAMES = [f"mcp__{SERVER_NAME}__{t.name}" for t in ALL_TOOLS]
+
+
+def create_ffiec_server():
+    """Create the in-process MCP server with all FFIEC tools."""
+    return create_sdk_mcp_server(
+        name=SERVER_NAME,
+        version=SERVER_VERSION,
+        tools=ALL_TOOLS,
+    )
