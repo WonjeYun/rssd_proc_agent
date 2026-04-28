@@ -55,9 +55,21 @@ Once the agent is running, try:
 | `What is the RSSD ID for JPMorgan Chase?` | Searches institutions by name |
 | `Show me the ownership tree for RSSD 1039502` | Displays parent/subsidiary relationships |
 | `What happened to Washington Mutual?` | Traces merger/failure history |
-| `Match this file: bank_list.xlsx` | Fuzzy-matches a spreadsheet of bank names to RSSD IDs |
+| `Match this file: bank_list.xlsx` | Fuzzy-matches names to RSSD IDs; city/state/ABA columns disambiguate duplicates |
 | `How many national banks are in Texas?` | Runs a custom SQL query under the hood |
 | `What are all the branches of RSSD 480228?` | Lists branch locations for a head office |
+
+## Matching bank lists (CSV / Excel)
+
+The `match_bank_list` tool reads each row with the institution name plus optional **city**,
+**state** (2-letter or full name), and **routing / ABA / RTN** columns. Those cues are
+matched against NIC fields and strongly reduce ambiguity when many banks share a name.
+If you do not pass column names, common headers (`CITY`, `STATE`, `ABA`, `RTN`,
+`ROUTING_NUMBER`, etc.) are detected automatically.
+
+By default both active and closed institutions are considered; **currently active** records
+are ranked first, then the **most recently ended** (by `DT_END`). Pass `active_only='true'`
+to limit the search to active institutions only.
 
 ## CLI Commands
 

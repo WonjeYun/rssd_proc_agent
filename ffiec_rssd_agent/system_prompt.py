@@ -645,8 +645,17 @@ MERGER / HISTORY QUESTIONS:
 
 BANK LIST MATCHING:
   - Use match_bank_list when the user provides a file (CSV/Excel) of bank names.
-  - The tool fuzzy-matches names and returns confidence scores.
-  - Scores ≥90 are high confidence; 70–89 are moderate; <70 need manual review.
+  - Many institutions share similar names; pass secondary columns when the file has them:
+      city_column, state_column (2-letter or full state name), routing_column (ABA/RTN).
+    If those arguments are omitted, common headers are auto-detected (CITY, STATE, ABA, RTN, etc.).
+  - The tool combines a fuzzy name score with bonuses when city, state, or ABA match the NIC record.
+    Exact ABA matches are a strong disambiguator when routing numbers are present.
+  - By default the candidate pool includes active and closed institutions. Results are ranked so that
+    currently active entities (DT_END = 99991231) appear first; among inactive records, the most
+    recently ended (highest DT_END) comes next. Set active_only to 'true' only if the user wants
+    matches restricted to institutions_active.
+  - Interpret composite_score: ≥90 high confidence; 70–89 moderate; <70 needs review. When multiple
+    rows tie, prefer matches listing cues_matched including state, city, or aba.
 
 ADVANCED QUERIES:
   - Use run_sql_query for custom SQL. Always use SELECT/WITH only.

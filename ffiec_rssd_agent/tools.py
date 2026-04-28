@@ -19,6 +19,52 @@ from . import db
 SERVER_NAME = "ffiec"
 SERVER_VERSION = "1.0.0"
 
+_CITY_ALIASES = (
+    "city",
+    "hq_city",
+    "bank_city",
+    "institution_city",
+    "hq city",
+    "bank city",
+)
+_STATE_ALIASES = (
+    "state",
+    "st",
+    "state_abbr",
+    "state abbr",
+    "state_code",
+)
+_ROUTING_ALIASES = (
+    "aba",
+    "rtn",
+    "routing",
+    "routing_number",
+    "routing_no",
+    "routing number",
+    "id_aba",
+    "id_aba_prim",
+    "aba_routing",
+    "fed_ach",
+)
+
+
+def _resolve_column(df: pd.DataFrame, explicit: str, aliases: tuple[str, ...]) -> str | None:
+    """Pick a column: use explicit name if valid, else first case-insensitive alias match."""
+    cols = list(df.columns)
+    if explicit and explicit.strip():
+        e = explicit.strip()
+        if e in cols:
+            return e
+        el = e.lower()
+        for c in cols:
+            if str(c).strip().lower() == el:
+                return c
+    lower_to_orig = {str(c).strip().lower(): c for c in cols}
+    for a in aliases:
+        if a.lower() in lower_to_orig:
+            return lower_to_orig[a.lower()]
+    return None
+
 
 def _fmt_rows(rows: list[dict], max_rows: int = 30) -> str:
     if not rows:
@@ -154,11 +200,22 @@ async def get_branches(args: dict[str, Any]) -> dict[str, Any]:
 
 @tool(
     "match_bank_list",
-    "Fuzzy-match a list of bank names from a CSV or Excel file against the FFIEC NIC database. "
-    "Provide the file_path to a .csv or .xlsx file. Specify the column name containing bank names "
-    "with 'name_column' (defaults to the first column). Returns each input name with its best "
-    "RSSD ID matches and confidence scores.",
-    {"file_path": str, "name_column": str, "active_only": str},
+    "Fuzzy-match banks from a CSV or Excel file against the FFIEC NIC database. "
+    "Required: file_path. Use name_column for the institution name (defaults to the first column). "
+    "Optional columns disambiguate duplicate names: city_column, state_column (2-letter or full state name), "
+    "routing_column (ABA/RTN). If those parameters are empty, common header names are auto-detected "
+    "(e.g. CITY, STATE, ABA, RTN, ROUTING_NUMBER). "
+    "By default searches active AND closed institutions but ranks currently active (DT_END=99991231) first, "
+    "then the most recently ended institutions. Set active_only to 'true' to restrict the search pool "
+    "to institutions_active only (legacy behavior).",
+    {
+        "file_path": str,
+        "name_column": str,
+        "city_column": str,
+        "state_column": str,
+        "routing_column": str,
+        "active_only": str,
+    },
 )
 async def match_bank_list(args: dict[str, Any]) -> dict[str, Any]:
     try:
@@ -180,23 +237,67 @@ async def match_bank_list(args: dict[str, Any]) -> dict[str, Any]:
                 "is_error": True,
             }
 
-        name_col = args.get("name_column") or df.columns[0]
-        if name_col not in df.columns:
+        name_explicit = (args.get("name_column") or "").strip()
+        if name_explicit:
+            name_col = _resolve_column(df, name_explicit, ())
+        else:
+            name_col = str(df.columns[0])
+        if not name_col or name_col not in df.columns:
             return {
-                "content": [{"type": "text", "text": f"Column '{name_col}' not found. Available: {list(df.columns)}"}],
+                "content": [{"type": "text", "text": f"Name column not found. Available: {list(df.columns)}"}],
                 "is_error": True,
             }
 
-        names = df[name_col].dropna().astype(str).tolist()
-        if not names:
+        city_col = _resolve_column(df, (args.get("city_column") or "").strip(), _CITY_ALIASES)
+        state_col = _resolve_column(df, (args.get("state_column") or "").strip(), _STATE_ALIASES)
+        routing_col = _resolve_column(df, (args.get("routing_column") or "").strip(), _ROUTING_ALIASES)
+
+        hint_lines = [
+            f"Using columns: name={name_col!r}",
+        ]
+        if city_col:
+            hint_lines.append(f"city={city_col!r}")
+        if state_col:
+            hint_lines.append(f"state={state_col!r}")
+        if routing_col:
+            hint_lines.append(f"routing/ABA={routing_col!r}")
+
+        bank_rows: list[dict[str, Any]] = []
+        for _, row in df.iterrows():
+            raw_name = row.get(name_col)
+            if raw_name is None or (isinstance(raw_name, float) and pd.isna(raw_name)):
+                continue
+            name = str(raw_name).strip()
+            if not name:
+                continue
+            rec: dict[str, Any] = {"name": name}
+            if city_col:
+                v = row.get(city_col)
+                if v is not None and not (isinstance(v, float) and pd.isna(v)):
+                    rec["city"] = str(v).strip()
+            if state_col:
+                v = row.get(state_col)
+                if v is not None and not (isinstance(v, float) and pd.isna(v)):
+                    rec["state"] = str(v).strip()
+            if routing_col:
+                v = row.get(routing_col)
+                if v is not None and not (isinstance(v, float) and pd.isna(v)):
+                    rec["aba"] = str(v).strip()
+            bank_rows.append(rec)
+
+        if not bank_rows:
             return {
-                "content": [{"type": "text", "text": "No names found in the specified column."}],
+                "content": [{"type": "text", "text": "No non-empty bank names found in the file."}],
                 "is_error": True,
             }
 
-        active_only = args.get("active_only", "true").lower() != "false"
-        results = db.fuzzy_match_names(names, active_only=active_only)
-        return {"content": [{"type": "text", "text": _fmt_rows(results, max_rows=200)}]}
+        pool_active_only = (args.get("active_only") or "").strip().lower() == "true"
+        results = db.fuzzy_match_bank_rows(
+            bank_rows,
+            pool_active_only=pool_active_only,
+        )
+        header = "\n".join(hint_lines) + "\n\n"
+        return {"content": [{"type": "text", "text": header + _fmt_rows(results, max_rows=500)}]}
 
     except Exception as e:
         return {
