@@ -14,6 +14,7 @@ from pathlib import Path
 import pandas as pd
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DATA_DIR = PROJECT_ROOT / "data"
 DB_PATH = PROJECT_ROOT / "ffiec_rssd_agent" / "ffiec_nic.db"
 
 CSV_TABLE_MAP = {
@@ -78,6 +79,11 @@ def load_csv(csv_path: Path) -> pd.DataFrame:
 
 
 def build_database() -> None:
+    if not DATA_DIR.is_dir():
+        print(f"ERROR: Data directory not found: {DATA_DIR}")
+        print("Create it and place the 5 FFIEC NIC CSV files there (see README).")
+        sys.exit(1)
+
     if DB_PATH.exists():
         DB_PATH.unlink()
         print(f"Removed existing database at {DB_PATH}")
@@ -89,7 +95,7 @@ def build_database() -> None:
 
     try:
         for csv_name, table_name in CSV_TABLE_MAP.items():
-            csv_path = PROJECT_ROOT / csv_name
+            csv_path = DATA_DIR / csv_name
             if not csv_path.exists():
                 print(f"  WARNING: {csv_path} not found, skipping.")
                 continue

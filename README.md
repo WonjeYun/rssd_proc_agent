@@ -32,8 +32,9 @@ set ANTHROPIC_API_KEY=sk-ant-...
 
 ### 3. Build the database
 
-This reads the 5 FFIEC NIC CSV files and loads them into a local SQLite database.
-You only need to run this once (or again when the CSVs are updated).
+This reads the 5 FFIEC NIC CSV files from the `data/` directory and loads them
+into a local SQLite database. You only need to run this once (or again when the
+CSVs are updated).
 
 ```bash
 python -m ffiec_rssd_agent.load_data
@@ -68,6 +69,7 @@ Once the agent is running, try:
 ## Project Structure
 
 ```
+data/                  # FFIEC NIC bulk CSV downloads (5 files)
 ffiec_rssd_agent/
   __init__.py          # Package init
   __main__.py          # Entry point for python -m
@@ -81,18 +83,19 @@ ffiec_rssd_agent/
 
 ## Data Source
 
-The CSV files come from the [FFIEC NIC Bulk Data Download](https://www.ffiec.gov/NPW):
+The CSV files live in `data/` and come from the
+[FFIEC NIC Bulk Data Download](https://www.ffiec.gov/NPW):
 
-- `CSV_ATTRIBUTES_ACTIVE.CSV` — Active institutions
-- `CSV_ATTRIBUTES_CLOSED.CSV` — Closed institutions
-- `CSV_ATTRIBUTES_BRANCHES.CSV` — Branch offices
-- `CSV_RELATIONSHIPS.CSV` — Ownership/control relationships
-- `CSV_TRANSFORMATIONS.CSV` — Mergers, failures, splits
+- `data/CSV_ATTRIBUTES_ACTIVE.CSV` — Active institutions
+- `data/CSV_ATTRIBUTES_CLOSED.CSV` — Closed institutions
+- `data/CSV_ATTRIBUTES_BRANCHES.CSV` — Branch offices
+- `data/CSV_RELATIONSHIPS.CSV` — Ownership/control relationships
+- `data/CSV_TRANSFORMATIONS.CSV` — Mergers, failures, splits
 
 ## Updating the Data
 
 To refresh with newer CSV files:
 
 1. Download updated CSVs from the FFIEC NIC website
-2. Place them in the project root (replacing the old files)
+2. Place them in the `data/` directory (replacing the old files)
 3. Re-run `python -m ffiec_rssd_agent.load_data`

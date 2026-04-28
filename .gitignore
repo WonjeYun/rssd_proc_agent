@@ -1,0 +1,49 @@
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Environment and secrets (never commit API keys)
+.env
+.env.*
+!.env.example
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+*.egg
+pip-wheel-metadata/
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE / editor (optional: remove lines if your team commits these)
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# --- FFIEC RSSD agent ---
+
+# Generated SQLite database (~300 MB); rebuild with:
+#   python -m ffiec_rssd_agent.load_data
+ffiec_rssd_agent/ffiec_nic.db
+ffiec_rssd_agent/ffiec_nic.db-wal
+ffiec_rssd_agent/ffiec_nic.db-shm
