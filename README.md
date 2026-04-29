@@ -133,6 +133,14 @@ The CSV files live in `data/` and come from the
 - `data/CSV_RELATIONSHIPS.CSV` — Ownership/control relationships
 - `data/CSV_TRANSFORMATIONS.CSV` — Mergers, failures, splits
 
+## Troubleshooting
+
+### Claude Code permission dialogs (Read, Bash, Write, …)
+
+The agent enables **`Read`**, **`Write`**, and **`Bash`** and lists them in **`allowed_tools`** alongside the FFIEC MCP tools so they are **pre‑approved** without interactive confirmation. Other built-ins (e.g. **Edit**, **Glob**) stay disabled to limit scope—see [`agent.py`](ffiec_rssd_agent/agent.py). If prompts still appear (e.g. a different tool name on your CLI/OS), add that tool to both **`tools=[...]`** and **`allowed_tools`** or set **`permission_mode`** as needed.
+
+---
+
 ## Updating the Data
 
 To refresh with newer CSV files:
