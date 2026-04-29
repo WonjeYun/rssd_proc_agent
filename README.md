@@ -6,16 +6,34 @@ lists against the FFIEC National Information Center (NIC) database.
 
 ## Prerequisites
 
-- **Python 3.10+**
+- **[uv](https://docs.astral.sh/uv/)** — installs Python (if needed) and project dependencies from `pyproject.toml`
+- **Python** — version must satisfy `requires-python` in `pyproject.toml` (currently **3.13+**)
 - **Anthropic API key** — get one at https://console.anthropic.com/
 
 ## Setup
 
-### 1. Install dependencies
+### 1. Clone and sync dependencies
+
+From the repository root:
+
+```bash
+uv sync
+```
+
+This creates a virtual environment and installs packages declared in [`pyproject.toml`](pyproject.toml). Use **`uv run …`** below so commands use that environment automatically.
+
+<details>
+<summary>Alternative: pip and <code>requirements.txt</code></summary>
+
+If you are not using uv:
 
 ```bash
 pip install -r requirements.txt
 ```
+
+Then replace `uv run python` with `python` in the steps below, using the interpreter where you installed the packages.
+
+</details>
 
 ### 2. Set your API key
 
@@ -37,13 +55,21 @@ into a local SQLite database. You only need to run this once (or again when the
 CSVs are updated).
 
 ```bash
-python -m ffiec_rssd_agent.load_data
+uv run python -m ffiec_rssd_agent.load_data
 ```
 
 ### 4. Start the agent
 
 ```bash
-python -m ffiec_rssd_agent
+uv run python -m ffiec_rssd_agent
+```
+
+Adding or upgrading dependencies (edit `pyproject.toml` first):
+
+```bash
+uv add <package>
+# or after manual edits:
+uv lock && uv sync
 ```
 
 ## Example Queries
@@ -81,6 +107,9 @@ to limit the search to active institutions only.
 ## Project Structure
 
 ```
+pyproject.toml         # Dependencies and project metadata (source of truth for uv)
+uv.lock                # Produced by `uv lock`; commit it for reproducible installs
+requirements.txt       # Legacy pip list (optional mirror; uv uses pyproject.toml)
 data/                  # FFIEC NIC bulk CSV downloads (5 files)
 ffiec_rssd_agent/
   __init__.py          # Package init
@@ -110,4 +139,4 @@ To refresh with newer CSV files:
 
 1. Download updated CSVs from the FFIEC NIC website
 2. Place them in the `data/` directory (replacing the old files)
-3. Re-run `python -m ffiec_rssd_agent.load_data`
+3. Re-run `uv run python -m ffiec_rssd_agent.load_data`

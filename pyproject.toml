@@ -1,0 +1,12 @@
+[project]
+name = "ffiec-rssd-db"
+version = "0.1.0"
+description = "A CLI agent powered by the Claude Agent SDK that helps you look up bank RSSD IDs, explore ownership structures, MIT LIcense"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "claude-agent-sdk>=0.1.71",
+    "openpyxl>=3.1.5",
+    "pandas>=3.0.2",
+    "rapidfuzz>=3.14.5",
+]
