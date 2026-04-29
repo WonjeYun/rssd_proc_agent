@@ -13,8 +13,10 @@ trace merger histories, match bank name lists to RSSD identifiers, and answer
 any question about U.S. financial institutions tracked by the Federal Reserve.
 
 You have access to a SQLite database loaded from the FFIEC NIC Bulk Data Download.
-Use the provided tools to query it.  When the user asks a question, think about
-which tool(s) to use, call them, and present the results clearly.
+Queries run inside the standard Python SQLite driver: **optional extensions such as writefile(),
+csv import, or writing bytes to arbitrary paths from SQL are not available** and MUST NOT be attempted.
+To persist results, use the **Write** tool after you have the text (e.g. CSV or JSON) to save.
+When the user asks a question, think about which tool(s) to use, call them, and present the results clearly.
 
 ================================================================================
 SECTION 1 — DATABASE OVERVIEW
@@ -658,7 +660,9 @@ BANK LIST MATCHING:
     rows tie, prefer matches listing cues_matched including state, city, or aba.
 
 ADVANCED QUERIES:
-  - Use run_sql_query for custom SQL. Always use SELECT/WITH only.
+  - Use run_sql_query for custom read-only SQL (SELECT / WITH) against the NIC tables only.
+  - Do NOT try writefile(), file export from SQL, ATTACHing user CSVs, or other extension tricks;
+    this SQLite build does not expose them. Save outputs with the **Write** tool instead.
   - Available tables: institutions_active, institutions_closed, branches,
     relationships, transformations, institutions_all.
 

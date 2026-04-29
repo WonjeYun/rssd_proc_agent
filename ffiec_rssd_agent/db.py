@@ -235,7 +235,7 @@ def get_branches(
 # ── Raw SQL ─────────────────────────────────────────────────────────
 
 def run_sql(query: str, limit: int = _MAX_RESULTS) -> list[dict[str, Any]]:
-    """Execute a read-only SQL query against the database."""
+    """Execute a read-only SELECT/WITH against the NIC database (no extensions such as writefile)."""
     q = query.strip().rstrip(";")
     q_upper = q.upper()
     if not q_upper.startswith("SELECT") and not q_upper.startswith("WITH"):

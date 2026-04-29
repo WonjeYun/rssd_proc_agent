@@ -308,10 +308,12 @@ async def match_bank_list(args: dict[str, Any]) -> dict[str, Any]:
 
 @tool(
     "run_sql_query",
-    "Execute a read-only SQL SELECT query directly against the FFIEC NIC SQLite database. "
-    "Available tables: institutions_active, institutions_closed, branches, relationships, "
-    "transformations, institutions_all (view = active UNION closed). "
-    "Only SELECT/WITH statements are allowed.",
+    "Execute a read-only SELECT (or WITH) against the FFIEC NIC SQLite database ONLY. "
+    "No DDL, no writes, no ATTACH/import of external CSVs, and no SQLite optional extensions "
+    "(there is NO writefile() or similar file-export in this engine). "
+    "To save query output to disk, format the rows yourself and use the Claude **Write** tool. "
+    "Tables: institutions_active, institutions_closed, branches, relationships, "
+    "transformations, institutions_all.",
     {"query": str},
 )
 async def run_sql_query(args: dict[str, Any]) -> dict[str, Any]:
