@@ -1,8 +1,8 @@
 """
 SQLite query helpers for the FFIEC NIC database.
 
-Provides typed search, lookup, and fuzzy-matching functions used by
-the MCP tools layer.
+Provides typed search, lookup, and fuzzy-matching functions for agent
+Python scripts and other callers.
 """
 
 import re

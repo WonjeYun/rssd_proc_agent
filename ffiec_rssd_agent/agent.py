@@ -23,7 +23,7 @@ from claude_agent_sdk import (
 )
 
 from .system_prompt import SYSTEM_PROMPT
-from .tools import ALLOWED_TOOL_NAMES, SERVER_NAME, create_ffiec_server
+from .tools import ALLOWED_TOOL_NAMES
 
 # Built-in Claude Code tools we expose and pre-approve (no permission prompt).
 # Must also appear in `tools=[...]` or they stay disabled.
@@ -68,16 +68,14 @@ async def run_agent() -> None:
     if not _check_prerequisites():
         sys.exit(1)
 
-    ffiec_server = create_ffiec_server()
-
-    # Built-ins: enable only Read/Write/Bash and pre-approve them (plus FFIEC MCP tools).
+    # Built-ins: enable only Read/Write/Bash and pre-approve them.
+    # NIC data access is via Python scripts run in Bash (see system_prompt), not MCP tools.
     # Other built-ins (Edit, Glob, Grep, …) stay off to limit scope.
     allowed = list(FILE_AND_SHELL_TOOLS) + list(ALLOWED_TOOL_NAMES)
 
     options = ClaudeAgentOptions(
         tools=list(FILE_AND_SHELL_TOOLS),
         system_prompt=SYSTEM_PROMPT,
-        mcp_servers={SERVER_NAME: ffiec_server},
         allowed_tools=allowed,
         setting_sources=[],
     )
