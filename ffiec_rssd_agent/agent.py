@@ -5,13 +5,15 @@ FFIEC RSSD Lookup Agent — interactive CLI.
 Usage:
     python -m ffiec_rssd_agent.agent
 
-Requires ANTHROPIC_API_KEY in the environment.
+Requires ANTHROPIC_API_KEY in the environment or in a .env file at the project root.
 """
 
 import asyncio
 import os
 import sys
 from pathlib import Path
+
+from dotenv import load_dotenv
 
 from claude_agent_sdk import (
     AssistantMessage,
@@ -29,7 +31,11 @@ from .tools import ALLOWED_TOOL_NAMES
 # Must also appear in `tools=[...]` or they stay disabled.
 FILE_AND_SHELL_TOOLS = ("Read", "Write", "Bash")
 
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = Path(__file__).resolve().parent / "ffiec_nic.db"
+
+# .env is not read by Python automatically; load project-root .env into os.environ.
+load_dotenv(_PROJECT_ROOT / ".env")
 
 HELP_TEXT = """
 FFIEC RSSD Lookup Agent

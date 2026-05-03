@@ -5,6 +5,7 @@ description = "A CLI agent powered by the Claude Agent SDK that helps you look u
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "python-dotenv>=1.0.0",
     "claude-agent-sdk>=0.1.71",
     "openpyxl>=3.1.5",
     "pandas>=3.0.2",
