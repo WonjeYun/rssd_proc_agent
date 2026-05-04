@@ -129,7 +129,7 @@ Important matching behavior in current `db.fuzzy_match_bank_rows`:
 
 ## Validation workflow (stage 1 + stage 2)
 
-When validating an already-matched output file:
+When the user asks the running agent to validate an already-matched output file:
 
 1. **Stage 1 (deterministic)** — run `ffiec_rssd_agent.validation.validate_matched_rows(df)` on the full file.
    - Adds `validation_verdict` (`accept` / `review` / `reject`)
@@ -140,18 +140,6 @@ When validating an already-matched output file:
    - Merge back and write `*_final.csv`
 
 This keeps token costs low by sending only suspicious rows to model review.
-
-Example Stage-1 command (run from repo root):
-
-```bash
-uv run python -c "import pandas as pd; from ffiec_rssd_agent.validation import validate_matched_rows; p='example/us_posting_unique_company_taxonomy_sftp_matched.csv'; out='example/us_posting_unique_company_taxonomy_sftp_validated.csv'; df=pd.read_csv(p, low_memory=False); validate_matched_rows(df).to_csv(out, index=False); print(f'saved -> {out}')"
-```
-
-Example inspect command (after Stage 1):
-
-```bash
-uv run python -c "import pandas as pd; p='example/us_posting_unique_company_taxonomy_sftp_validated.csv'; df=pd.read_csv(p, low_memory=False); print(df['validation_verdict'].value_counts(dropna=False).to_string())"
-```
 
 ## CLI Commands
 
