@@ -29,6 +29,9 @@ htmlcov/
 .tox/
 .nox/
 
+# Agent generated scripts
+agent_scripts/
+
 # Jupyter
 .ipynb_checkpoints/
 
