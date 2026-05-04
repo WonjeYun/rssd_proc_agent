@@ -61,6 +61,14 @@ $env:ANTHROPIC_API_KEY = "sk-ant-..."
 set ANTHROPIC_API_KEY=sk-ant-...
 ```
 
+You can also put the key in a repo-root `.env` file:
+
+```dotenv
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+`ffiec_rssd_agent.agent` loads `.env` automatically at startup.
+
 ### 3. Build the database
 
 This reads the 5 FFIEC NIC CSV files from the `data/` directory and loads them
@@ -109,7 +117,41 @@ Use Python (run through **`uv run python`** from the repo root so `ffiec_rssd_ag
 
 Header names like `CITY`, `STATE`, `ABA`, `RTN`, `ROUTING_NUMBER` are conventional; map them in code to the keys `db` expects.
 
-By default both active and closed institutions are in the candidate pool; results rank **currently active** first (`DT_END = 99991231`), then the **most recently ended**. Pass **`pool_active_only=True`** to `fuzzy_match_bank_rows` if you want matches restricted to **`institutions_active`** only.
+By default both active and closed institutions are in the candidate pool; pass
+**`pool_active_only=True`** to restrict to **`institutions_active`**.
+
+Important matching behavior in current `db.fuzzy_match_bank_rows`:
+
+- Uses **state-indexed candidate pools** when `state` is present (faster on large files).
+- Falls back to the full national pool when state is missing/unknown.
+- Ranks by **uncapped** composite (name + cue bonuses) so city/ABA evidence is not lost when display score reaches 100.
+- Returns `composite_score` capped at 100 for readability.
+
+## Validation workflow (stage 1 + stage 2)
+
+When validating an already-matched output file:
+
+1. **Stage 1 (deterministic)** — run `ffiec_rssd_agent.validation.validate_matched_rows(df)` on the full file.
+   - Adds `validation_verdict` (`accept` / `review` / `reject`)
+   - Adds `validation_reason_codes`
+   - Write `*_validated.csv`
+2. **Stage 2 (agent-assisted)** — review only rows where `validation_verdict == "review"` in chunks.
+   - Write `*_review.csv` (review subset + model decisions)
+   - Merge back and write `*_final.csv`
+
+This keeps token costs low by sending only suspicious rows to model review.
+
+Example Stage-1 command (run from repo root):
+
+```bash
+uv run python -c "import pandas as pd; from ffiec_rssd_agent.validation import validate_matched_rows; p='example/us_posting_unique_company_taxonomy_sftp_matched.csv'; out='example/us_posting_unique_company_taxonomy_sftp_validated.csv'; df=pd.read_csv(p, low_memory=False); validate_matched_rows(df).to_csv(out, index=False); print(f'saved -> {out}')"
+```
+
+Example inspect command (after Stage 1):
+
+```bash
+uv run python -c "import pandas as pd; p='example/us_posting_unique_company_taxonomy_sftp_validated.csv'; df=pd.read_csv(p, low_memory=False); print(df['validation_verdict'].value_counts(dropna=False).to_string())"
+```
 
 ## CLI Commands
 
@@ -124,6 +166,7 @@ When editing this repository with Cursor, Claude Code, or similar tools, see **[
 
 ```
 CLAUDE.md              # Guidelines for AI-assisted development on this repo
+agent_scripts/         # Timestamped temporary runner scripts (agent-generated)
 pyproject.toml         # Dependencies and project metadata (source of truth for uv)
 uv.lock                # Produced by `uv lock`; commit it for reproducible installs
 requirements.txt       # Legacy pip list (optional mirror; uv uses pyproject.toml)
@@ -133,6 +176,7 @@ ffiec_rssd_agent/
   __main__.py          # Entry point for python -m
   load_data.py         # CSV → SQLite ETL
   db.py                # SQLite query helpers + fuzzy matching (what scripts should import)
+  validation.py        # Stage-1 deterministic validator for matched outputs
   tools.py             # Placeholder constants (no FFIEC MCP server in default agent)
   legacy_tools.py      # Former MCP tool definitions; optional for custom agents
   system_prompt.py     # Domain-expert system prompt with full data dictionary
