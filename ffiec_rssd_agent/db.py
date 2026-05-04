@@ -5,6 +5,7 @@ Provides typed search, lookup, and fuzzy-matching functions for agent
 Python scripts and other callers.
 """
 
+import math
 import re
 import sqlite3
 from pathlib import Path
@@ -29,6 +30,8 @@ _US_STATE_ABBR: dict[str, str] = {
     "AMERICAN SAMOA": "AS", "GUAM": "GU", "NORTHERN MARIANA ISLANDS": "MP",
     "PUERTO RICO": "PR", "VIRGIN ISLANDS": "VI",
 }
+
+_US_STATE_CODES = frozenset(_US_STATE_ABBR.values())
 
 _MAX_RESULTS = 50
 
@@ -264,22 +267,66 @@ def _aba_to_int(val: Any) -> int | None:
     return v if v > 0 else None
 
 
-def _norm_state_hint(raw: str | None) -> str | None:
-    if raw is None:
+def _scalar_is_missing(val: Any) -> bool:
+    """True for None, float NaN, pandas NA/NaN (when pandas is installed)."""
+    if val is None:
+        return True
+    if isinstance(val, float) and math.isnan(val):
+        return True
+    try:
+        import pandas as pd
+
+        if pd.isna(val):
+            return True
+    except (ImportError, TypeError, ValueError):
+        pass
+    return False
+
+
+def _norm_state_hint(raw: Any) -> str | None:
+    if _scalar_is_missing(raw):
         return None
     t = str(raw).strip().upper()
-    if not t:
+    if not t or t == "NAN":
         return None
     if len(t) == 2 and t.isalpha():
         return t
     return _US_STATE_ABBR.get(t)
 
 
-def _norm_city_hint(raw: str | None) -> str | None:
-    if raw is None:
+def _norm_city_hint(raw: Any) -> str | None:
+    if _scalar_is_missing(raw):
         return None
     t = re.sub(r"\s+", " ", str(raw).strip().upper())
-    return t or None
+    if not t or t == "NAN":
+        return None
+    return t
+
+
+def _build_state_row_pools(
+    candidates: list[dict[str, Any]],
+) -> dict[str, list[int]]:
+    """
+    Map normalized state abbreviation -> global candidate indices for fuzzy extract.
+
+    U.S. / territory buckets also include candidates with a blank NIC state so
+    nationally chartered entities are not dropped from the in-state pool.
+    """
+    buckets: dict[str, list[int]] = {}
+    missing_state: list[int] = []
+    for i, c in enumerate(candidates):
+        sa = (c.get("STATE_ABBR_NM") or "").strip().upper()
+        if not sa:
+            missing_state.append(i)
+        else:
+            buckets.setdefault(sa, []).append(i)
+    pools: dict[str, list[int]] = {}
+    for key, idxs in buckets.items():
+        if key in _US_STATE_CODES:
+            pools[key] = idxs + missing_state
+        else:
+            pools[key] = list(idxs)
+    return pools
 
 
 def fuzzy_match_bank_rows(
@@ -300,6 +347,11 @@ def fuzzy_match_bank_rows(
       4. Most recent DT_START as a tie-breaker
 
     Each input row dict may contain: name (required), city, state, aba (routing).
+
+    When ``state`` resolves to a U.S. / territory abbreviation present in the NIC
+    data, name fuzzy-matching is restricted to that state's bucket (plus
+    blank-state records for U.S. states) instead of the full national pool, which
+    greatly speeds bulk jobs.
     """
     from rapidfuzz import fuzz, process
 
@@ -322,6 +374,7 @@ def fuzzy_match_bank_rows(
         candidates = _rows_to_dicts(conn.execute(sql).fetchall())
 
     choice_names = [c["NM_LGL_UPPER"] for c in candidates]
+    state_row_pools = _build_state_row_pools(candidates)
 
     # Pre-index ABA -> list of candidate indices (for routing disambiguation)
     aba_to_indices: dict[int, list[int]] = {}
@@ -343,15 +396,29 @@ def fuzzy_match_bank_rows(
 
         idx_set: set[int] = set()
 
+        pool_indices: list[int] | None = None
+        if isinstance(state_hint, str) and state_hint:
+            pool_indices = state_row_pools.get(state_hint.strip().upper())
+        if pool_indices is not None and len(pool_indices) == 0:
+            pool_indices = None
+
+        if pool_indices is None:
+            names_for_extract = choice_names
+            local_to_global: list[int] | None = None
+        else:
+            names_for_extract = [choice_names[i] for i in pool_indices]
+            local_to_global = pool_indices
+
         name_matches = process.extract(
             name.upper(),
-            choice_names,
+            names_for_extract,
             scorer=fuzz.WRatio,
             score_cutoff=score_cutoff,
             limit=name_neighbor_limit,
         )
-        for _, _, idx in name_matches:
-            idx_set.add(idx)
+        for _, _, local_j in name_matches:
+            gidx = local_j if local_to_global is None else local_to_global[local_j]
+            idx_set.add(gidx)
 
         if aba_hint is not None and aba_hint in aba_to_indices:
             idx_set.update(aba_to_indices[aba_hint])
@@ -367,7 +434,11 @@ def fuzzy_match_bank_rows(
             composite = name_score
 
             cand_state = _norm_state_hint(c.get("STATE_ABBR_NM"))
-            if state_hint and cand_state and state_hint == cand_state:
+            if (
+                isinstance(state_hint, str)
+                and cand_state
+                and state_hint == cand_state
+            ):
                 composite = min(100.0, composite + 14.0)
                 cues.append("state")
 

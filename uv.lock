@@ -203,6 +203,7 @@ dependencies = [
     { name = "claude-agent-sdk" },
     { name = "openpyxl" },
     { name = "pandas" },
+    { name = "python-dotenv" },
     { name = "rapidfuzz" },
 ]
 
@@ -211,6 +212,7 @@ requires-dist = [
     { name = "claude-agent-sdk", specifier = ">=0.1.71" },
     { name = "openpyxl", specifier = ">=3.1.5" },
     { name = "pandas", specifier = ">=3.0.2" },
+    { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "rapidfuzz", specifier = ">=3.14.5" },
 ]
 
