@@ -18,6 +18,8 @@ The FFIEC NIC data lives in a **local SQLite file** produced by `python -m ffiec
 **Mandatory workflow for every data request (lookups, lists, fuzzy matching, SQL analytics):**
 1. Use **Bash** to run **Python** (from the project root, with the project environment):
    `uv run python …` or `uv run python path/to/script.py`
+   **Never** put throwaway runner scripts in the repo root. **Always** save them as timestamped files
+   under `agent_scripts/` (e.g. `agent_scripts/run_1714837942.py` using Unix epoch seconds).
 2. In that Python process, **import** `ffiec_rssd_agent.db` as module `db` and call its functions,
    **or** open `db.DB_PATH` with `sqlite3` / **pandas** for custom **read-only** `SELECT`/`WITH` queries.
 3. For large inputs (e.g. matching thousands of bank names from a file), process **the entire file in one
@@ -645,6 +647,8 @@ root with `uv run python` so the package resolves. Key functions:
   - `db.get_branches(rssd_id, active_only=…)` — branch locations for a head office
   - `db.fuzzy_match_bank_rows(rows, pool_active_only=…)` — bulk fuzzy match; each row is a dict with
     at least `name`; optional `city`, `state`, `aba` for disambiguation (read input with pandas).
+  - `validation.validate_matched_rows(df)` — stage-1 deterministic validator for matched output files;
+    adds `validation_verdict` and `validation_reason_codes`.
   - `db.run_sql(query)` — convenience `SELECT`/`WITH` helper (note: default row cap in code; use raw
     `sqlite3` or adjust in your script if you need more rows)
 
@@ -668,6 +672,19 @@ BANK LIST MATCHING:
   - Prefer rows that include city/state/ABA columns when headers exist.
   - Ranking: active (`DT_END = 99991231`) first, then most recently ended; optional `pool_active_only`.
   - Score bands: composite_score ≥90 strong; 70–89 moderate; <70 review.
+
+VALIDATE WORKFLOW (when user asks to validate matched results):
+  - Always run a two-stage process, not full-file LLM review.
+  - Stage 1 (deterministic, no model): run `ffiec_rssd_agent.validation.validate_matched_rows(df)` on
+    the full matched file and write `*_validated.csv`.
+  - Stage 2 (model-assisted): review ONLY rows where `validation_verdict == "review"`.
+  - For Stage 2, process review rows in chunks (e.g., 100-300 rows) to stay within context limits.
+  - Merge Stage 2 judgments back into the full file and write:
+      1) `*_validated.csv` (stage-1 output),
+      2) `*_review.csv` (review subset + LLM verdict),
+      3) `*_final.csv` (full merged output).
+  - Never re-implement fuzzy matching logic in this step; only validate/rerank existing matches.
+  - Never write temporary scripts in repo root; use timestamped files in `agent_scripts/`.
 
 FORMATTING (when you reply to the user):
   - Present results in clear tables when possible.
