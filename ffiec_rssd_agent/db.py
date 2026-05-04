@@ -340,11 +340,11 @@ def fuzzy_match_bank_rows(
     """
     Fuzzy-match bank rows that may include secondary cues: city, state, ABA/RTN.
 
-    Searches institutions_all by default (active + closed). Ranking:
-      1. Composite score (name + cue bonuses)
-      2. Currently active (DT_END = 99991231) before closed
-      3. Among closed, most recently ended (highest DT_END)
-      4. Most recent DT_START as a tie-breaker
+    Searches institutions_all by default (active + closed). Ranking uses an
+    **uncapped** sum of name score plus cue bonuses so city/ABA contributions
+    are not lost when name+state already exceed 100; ``composite_score`` in each
+    match row remains **capped at 100** for display. Tie-breakers after that:
+    name score, active record, DT_END, DT_START.
 
     Each input row dict may contain: name (required), city, state, aba (routing).
 
@@ -431,7 +431,8 @@ def fuzzy_match_bank_rows(
             )
 
             cues: list[str] = []
-            composite = name_score
+            # Uncapped sum for ordering; cap only for composite_score display.
+            composite_raw = name_score
 
             cand_state = _norm_state_hint(c.get("STATE_ABBR_NM"))
             if (
@@ -439,7 +440,7 @@ def fuzzy_match_bank_rows(
                 and cand_state
                 and state_hint == cand_state
             ):
-                composite = min(100.0, composite + 14.0)
+                composite_raw += 14.0
                 cues.append("state")
 
             if city_hint and c.get("CITY"):
@@ -449,12 +450,14 @@ def fuzzy_match_bank_rows(
                     bonus = min(18.0, cr * 0.18)
                     if bonus >= 8:
                         cues.append("city")
-                    composite = min(100.0, composite + bonus)
+                        composite_raw += bonus
 
             cand_aba = _aba_to_int(c.get("ID_ABA_PRIM"))
             if aba_hint is not None and cand_aba is not None and aba_hint == cand_aba:
-                composite = min(100.0, composite + 38.0)
+                composite_raw += 38.0
                 cues.append("aba")
+
+            composite_display = min(100.0, composite_raw)
 
             dt_end = str(c.get("DT_END") or "0").strip()
             dt_start = str(c.get("DT_START") or "0").strip()
@@ -471,7 +474,7 @@ def fuzzy_match_bank_rows(
             scored.append({
                 "rssd_id": c["ID_RSSD"],
                 "legal_name": c["NM_LGL"],
-                "composite_score": round(composite, 1),
+                "composite_score": round(composite_display, 1),
                 "name_score": round(name_score, 1),
                 "cues_matched": cues,
                 "entity_type": c["ENTITY_TYPE"],
@@ -482,7 +485,13 @@ def fuzzy_match_bank_rows(
                 "dt_start": dt_start,
                 "status": c.get("status"),
                 "is_current_record": is_current,
-                "_sort": (-composite, -float(is_current), -dt_end_i, -dt_start_i),
+                "_sort": (
+                    -composite_raw,
+                    -name_score,
+                    -float(is_current),
+                    -dt_end_i,
+                    -dt_start_i,
+                ),
             })
 
         scored.sort(key=lambda x: x["_sort"])
