@@ -60,6 +60,16 @@ For multi-step tasks, state a brief plan:
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
+## 5. Agent execution scripts
+
+**Never write temporary or one-off execution scripts in the repository root** (or other ad-hoc paths outside this folder).
+
+**Always write** Bash-invoked Python (or other throwaway runner scripts) under **`agent_scripts/`**, using a **timestamped filename** so runs do not overwrite each other, for example:
+
+- `agent_scripts/run_1714837942.py` (Unix epoch seconds)
+
+If you need a shell wrapper, use the same pattern (e.g. `agent_scripts/run_1714837942.sh`).
+
 ---
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
